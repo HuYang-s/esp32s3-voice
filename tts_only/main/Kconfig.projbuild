@@ -1,0 +1,21 @@
+menu "TTS Only Settings"
+
+config EXAMPLE_WIFI_SSID
+    string "WiFi SSID"
+    default "YourSSID"
+    help
+        SSID for WiFi station connection.
+
+config EXAMPLE_WIFI_PASSWORD
+    string "WiFi Password"
+    default "YourPassword"
+    help
+        Password for WiFi station connection.
+
+config WEBSOCKET_URL
+    string "WebSocket URL"
+    default "wss://your.tts.server/ws"
+    help
+        Backend WebSocket URL for streaming ASR+LLM+TTS.
+
+endmenu

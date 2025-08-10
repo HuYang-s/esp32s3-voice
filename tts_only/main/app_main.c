@@ -38,7 +38,8 @@
 #define I2S_SLOT_MODE        I2S_SLOT_MODE_MONO
 
 static const char *TAG = "TTS_ONLY";
-static i2s_chan_handle_t i2s_tx_chan = NULL;
+// Expose TX channel for websocket player
+i2s_chan_handle_t i2s_tx_chan = NULL;
 // Move audio buffers to static storage to reduce stack usage of main task
 static int16_t g_pcm_mono[960];                 // 60ms @ 16kHz
 static int32_t g_i2s_buffer32[960];             // 60ms mono @16kHz, 32-bit samples
@@ -146,6 +147,8 @@ static void play_p3_asset(const uint8_t* start, size_t size)
     opus_decoder_destroy(decoder);
 }
 
+void ws_tts_run(void);
+
 void app_main(void)
 {
     esp_chip_info_t chip_info;
@@ -163,16 +166,6 @@ void app_main(void)
     ESP_LOGI(TAG, "I2S TX initialized: BCLK=%d, LRCK=%d, DOUT=%d, fs=%d Hz, 32-bit mono-left",
              AUDIO_I2S_SPK_GPIO_BCLK, AUDIO_I2S_SPK_GPIO_LRCK, AUDIO_I2S_SPK_GPIO_DOUT, I2S_SAMPLE_RATE_HZ);
 
-    // Play embedded P3 assets in a loop as a TTS demo
-    while (true) {
-        ESP_LOGI(TAG, "Playing err_reg.p3...");
-        play_p3_asset(err_reg_p3_start, err_reg_p3_end - err_reg_p3_start);
-        vTaskDelay(pdMS_TO_TICKS(500));
-        ESP_LOGI(TAG, "Playing err_pin.p3...");
-        play_p3_asset(err_pin_p3_start, err_pin_p3_end - err_pin_p3_start);
-        vTaskDelay(pdMS_TO_TICKS(500));
-        ESP_LOGI(TAG, "Playing err_wificonfig.p3...");
-        play_p3_asset(err_wificonfig_p3_start, err_wificonfig_p3_end - err_wificonfig_p3_start);
-        vTaskDelay(pdMS_TO_TICKS(2000));
-    }
+    // Start websocket TTS streaming (ASR/LLM on server side)
+    ws_tts_run();
 }

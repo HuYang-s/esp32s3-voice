@@ -5,3 +5,10 @@ CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 CONFIG_ESP_CONSOLE_UART_DEFAULT=n
 # Increase main task stack size (default 3584) to avoid overflow during opus decode
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# WiFi credentials (set your own)
+CONFIG_EXAMPLE_WIFI_SSID="YourSSID"
+CONFIG_EXAMPLE_WIFI_PASSWORD="YourPassword"
+
+# Websocket TTS backend URL (set your own, wss/http as needed)
+CONFIG_WEBSOCKET_URL="wss://your.tts.server/ws"
