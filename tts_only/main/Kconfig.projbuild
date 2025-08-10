@@ -18,4 +18,10 @@ config WEBSOCKET_URL
     help
         Backend WebSocket URL for streaming ASR+LLM+TTS.
 
+config WEBSOCKET_ACCESS_TOKEN
+    string "WebSocket Access Token (Bearer)"
+    default ""
+    help
+        Bearer token used as Authorization header for the backend.
+
 endmenu

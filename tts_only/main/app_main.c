@@ -166,6 +166,11 @@ void app_main(void)
     ESP_LOGI(TAG, "I2S TX initialized: BCLK=%d, LRCK=%d, DOUT=%d, fs=%d Hz, 32-bit mono-left",
              AUDIO_I2S_SPK_GPIO_BCLK, AUDIO_I2S_SPK_GPIO_LRCK, AUDIO_I2S_SPK_GPIO_DOUT, I2S_SAMPLE_RATE_HZ);
 
+    // Self-test: play one embedded P3 clip once to verify audio path
+    size_t test_size = (size_t)(err_wificonfig_p3_end - err_wificonfig_p3_start);
+    ESP_LOGI(TAG, "Self-test: playing embedded err_wificonfig.p3 (%u bytes)", (unsigned)test_size);
+    play_p3_asset(err_wificonfig_p3_start, test_size);
+
     // Start websocket TTS streaming (ASR/LLM on server side)
     ws_tts_run();
 }
