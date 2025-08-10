@@ -1,0 +1,5 @@
+# Minimal defaults for ESP-IDF v5.4 targeting ESP32-S3
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+# If UART console is used on your board, comment the next line
+CONFIG_ESP_CONSOLE_UART_DEFAULT=n
