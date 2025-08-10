@@ -34,14 +34,14 @@
 #endif
 
 #define I2S_SAMPLE_RATE_HZ   16000
-#define I2S_BITS_PER_SAMPLE  I2S_DATA_BIT_WIDTH_16BIT
-#define I2S_SLOT_MODE        I2S_SLOT_MODE_STEREO
+#define I2S_BITS_PER_SAMPLE  I2S_DATA_BIT_WIDTH_32BIT
+#define I2S_SLOT_MODE        I2S_SLOT_MODE_MONO
 
 static const char *TAG = "TTS_ONLY";
 static i2s_chan_handle_t i2s_tx_chan = NULL;
 // Move audio buffers to static storage to reduce stack usage of main task
 static int16_t g_pcm_mono[960];                 // 60ms @ 16kHz
-static int16_t g_i2s_buffer[960 * 2];           // up to 60ms stereo @16kHz
+static int32_t g_i2s_buffer32[960];             // 60ms mono @16kHz, 32-bit samples
 
 extern const uint8_t err_reg_p3_start[] asm("_binary_err_reg_p3_start");
 extern const uint8_t err_reg_p3_end[]   asm("_binary_err_reg_p3_end");
@@ -52,34 +52,48 @@ extern const uint8_t err_wificonfig_p3_end[]   asm("_binary_err_wificonfig_p3_en
 
 static void init_i2s_tx(void)
 {
-    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
-    chan_cfg.dma_desc_num = 8;
-    chan_cfg.dma_frame_num = 240;
+    i2s_chan_config_t chan_cfg = {
+        .id = I2S_NUM_0,
+        .role = I2S_ROLE_MASTER,
+        .dma_desc_num = 6,
+        .dma_frame_num = 240,
+        .auto_clear_after_cb = true,
+        .auto_clear_before_cb = false,
+        .intr_priority = 0,
+    };
     ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, &i2s_tx_chan, NULL));
 
-    i2s_std_clk_config_t clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(I2S_SAMPLE_RATE_HZ);
-
-    i2s_std_slot_config_t slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_BITS_PER_SAMPLE, I2S_SLOT_MODE);
-    // Ensure slot bit width equals data width for common amps like MAX98357A
-    slot_cfg.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
-
-    i2s_std_gpio_config_t gpio_cfg = {
-        .mclk = I2S_GPIO_UNUSED,
-        .bclk = AUDIO_I2S_SPK_GPIO_BCLK,
-        .ws   = AUDIO_I2S_SPK_GPIO_LRCK,
-        .dout = AUDIO_I2S_SPK_GPIO_DOUT,
-        .din  = I2S_GPIO_UNUSED,
-        .invert_flags = {
-            .mclk_inv = false,
-            .bclk_inv = false,
-            .ws_inv   = false,
-        },
-    };
-
     i2s_std_config_t std_cfg = {
-        .clk_cfg  = clk_cfg,
-        .slot_cfg = slot_cfg,
-        .gpio_cfg = gpio_cfg,
+        .clk_cfg = {
+            .sample_rate_hz = I2S_SAMPLE_RATE_HZ,
+            .clk_src = I2S_CLK_SRC_DEFAULT,
+            .ext_clk_freq_hz = 0,
+            .mclk_multiple = I2S_MCLK_MULTIPLE_256,
+        },
+        .slot_cfg = {
+            .data_bit_width = I2S_DATA_BIT_WIDTH_32BIT,
+            .slot_bit_width = I2S_SLOT_BIT_WIDTH_AUTO,
+            .slot_mode = I2S_SLOT_MODE_MONO,
+            .slot_mask = I2S_STD_SLOT_LEFT,
+            .ws_width = I2S_DATA_BIT_WIDTH_32BIT,
+            .ws_pol = false,
+            .bit_shift = true,
+            .left_align = true,
+            .big_endian = false,
+            .bit_order_lsb = false,
+        },
+        .gpio_cfg = {
+            .mclk = I2S_GPIO_UNUSED,
+            .bclk = AUDIO_I2S_SPK_GPIO_BCLK,
+            .ws   = AUDIO_I2S_SPK_GPIO_LRCK,
+            .dout = AUDIO_I2S_SPK_GPIO_DOUT,
+            .din  = I2S_GPIO_UNUSED,
+            .invert_flags = {
+                .mclk_inv = false,
+                .bclk_inv = false,
+                .ws_inv   = false,
+            },
+        },
     };
 
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(i2s_tx_chan, &std_cfg));
@@ -121,15 +135,12 @@ static void play_p3_asset(const uint8_t* start, size_t size)
         }
         size_t frames = (size_t)decoded;
 
-        // Duplicate to stereo without resampling (I2S @16kHz)
-        size_t out_idx = 0;
+        // Convert 16-bit PCM to 32-bit samples (left-justified via <<16)
         for (size_t i = 0; i < frames; ++i) {
-            int16_t s = pcm_mono[i];
-            g_i2s_buffer[out_idx++] = s; // L
-            g_i2s_buffer[out_idx++] = s; // R
+            g_i2s_buffer32[i] = ((int32_t)pcm_mono[i]) << 16;
         }
         size_t bytes_written = 0;
-        ESP_ERROR_CHECK(i2s_channel_write(i2s_tx_chan, g_i2s_buffer, out_idx * sizeof(int16_t), &bytes_written, portMAX_DELAY));
+        ESP_ERROR_CHECK(i2s_channel_write(i2s_tx_chan, g_i2s_buffer32, frames * sizeof(int32_t), &bytes_written, portMAX_DELAY));
     }
 
     opus_decoder_destroy(decoder);
@@ -149,7 +160,7 @@ void app_main(void)
 
     // Initialize I2S TX for speaker output
     init_i2s_tx();
-    ESP_LOGI(TAG, "I2S TX initialized: BCLK=%d, LRCK=%d, DOUT=%d, fs=%d Hz, 16-bit stereo",
+    ESP_LOGI(TAG, "I2S TX initialized: BCLK=%d, LRCK=%d, DOUT=%d, fs=%d Hz, 32-bit mono-left",
              AUDIO_I2S_SPK_GPIO_BCLK, AUDIO_I2S_SPK_GPIO_LRCK, AUDIO_I2S_SPK_GPIO_DOUT, I2S_SAMPLE_RATE_HZ);
 
     // Play embedded P3 assets in a loop as a TTS demo
