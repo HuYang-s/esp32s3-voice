@@ -33,7 +33,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#define I2S_SAMPLE_RATE_HZ   48000
+#define I2S_SAMPLE_RATE_HZ   16000
 #define I2S_BITS_PER_SAMPLE  I2S_DATA_BIT_WIDTH_16BIT
 #define I2S_SLOT_MODE        I2S_SLOT_MODE_STEREO
 
@@ -41,7 +41,7 @@ static const char *TAG = "TTS_ONLY";
 static i2s_chan_handle_t i2s_tx_chan = NULL;
 // Move audio buffers to static storage to reduce stack usage of main task
 static int16_t g_pcm_mono[960];                 // 60ms @ 16kHz
-static int16_t g_i2s_buffer[320 * 3 * 2];       // chunk 320 -> upsample x3 -> stereo
+static int16_t g_i2s_buffer[960 * 2];           // up to 60ms stereo @16kHz
 
 extern const uint8_t err_reg_p3_start[] asm("_binary_err_reg_p3_start");
 extern const uint8_t err_reg_p3_end[]   asm("_binary_err_reg_p3_end");
@@ -121,26 +121,15 @@ static void play_p3_asset(const uint8_t* start, size_t size)
         }
         size_t frames = (size_t)decoded;
 
-        // Up-sample from 16k -> 48k by simple duplication (nearest). For quality, use proper resampler if needed.
-        // 3x upsample and duplicate to stereo
-        for (size_t blk = 0; blk < frames; ) {
-            size_t chunk = frames - blk;
-            if (chunk > 320) chunk = 320; // limit temporary buffer
-            int16_t* i2s_buffer = g_i2s_buffer; // mono 320 -> 960, stereo -> *2
-            size_t out_idx = 0;
-            for (size_t i = 0; i < chunk; ++i) {
-                int16_t s = pcm_mono[blk + i];
-                // 3x duplicate for 48k
-                for (int k = 0; k < 3; ++k) {
-                    i2s_buffer[out_idx++] = s; // L
-                    i2s_buffer[out_idx++] = s; // R
-                }
-            }
-            size_t bytes_written = 0;
-            ESP_ERROR_CHECK(i2s_channel_write(i2s_tx_chan, i2s_buffer, out_idx * sizeof(int16_t), &bytes_written, portMAX_DELAY));
-        
-            blk += chunk;
+        // Duplicate to stereo without resampling (I2S @16kHz)
+        size_t out_idx = 0;
+        for (size_t i = 0; i < frames; ++i) {
+            int16_t s = pcm_mono[i];
+            g_i2s_buffer[out_idx++] = s; // L
+            g_i2s_buffer[out_idx++] = s; // R
         }
+        size_t bytes_written = 0;
+        ESP_ERROR_CHECK(i2s_channel_write(i2s_tx_chan, g_i2s_buffer, out_idx * sizeof(int16_t), &bytes_written, portMAX_DELAY));
     }
 
     opus_decoder_destroy(decoder);
