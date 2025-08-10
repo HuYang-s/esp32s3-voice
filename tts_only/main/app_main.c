@@ -39,6 +39,9 @@
 
 static const char *TAG = "TTS_ONLY";
 static i2s_chan_handle_t i2s_tx_chan = NULL;
+// Move audio buffers to static storage to reduce stack usage of main task
+static int16_t g_pcm_mono[960];                 // 60ms @ 16kHz
+static int16_t g_i2s_buffer[320 * 3 * 2];       // chunk 320 -> upsample x3 -> stereo
 
 extern const uint8_t err_reg_p3_start[] asm("_binary_err_reg_p3_start");
 extern const uint8_t err_reg_p3_end[]   asm("_binary_err_reg_p3_end");
@@ -108,9 +111,9 @@ static void play_p3_asset(const uint8_t* start, size_t size)
         const unsigned char* opus = (const unsigned char*)p;
         p += payload_size;
 
-        // 60ms at 16kHz mono -> 960 samples per 60ms frame? Actually 16k * 0.06 = 960
+        // 60ms at 16kHz mono -> 960 samples
         int frame_size = opus_sample_rate * 60 / 1000;
-        int16_t pcm_mono[960];
+        int16_t* pcm_mono = g_pcm_mono;
         int decoded = opus_decode(decoder, opus, payload_size, pcm_mono, frame_size, 0);
         if (decoded < 0) {
             ESP_LOGW(TAG, "Opus decode error: %d", decoded);
@@ -123,7 +126,7 @@ static void play_p3_asset(const uint8_t* start, size_t size)
         for (size_t blk = 0; blk < frames; ) {
             size_t chunk = frames - blk;
             if (chunk > 320) chunk = 320; // limit temporary buffer
-            static int16_t i2s_buffer[320 * 3 * 2]; // mono 320 -> 960, stereo -> *2
+            int16_t* i2s_buffer = g_i2s_buffer; // mono 320 -> 960, stereo -> *2
             size_t out_idx = 0;
             for (size_t i = 0; i < chunk; ++i) {
                 int16_t s = pcm_mono[blk + i];
