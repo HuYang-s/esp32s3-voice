@@ -75,7 +75,7 @@ static void init_i2s_tx(void)
         .gpio_cfg = gpio_cfg,
     };
 
-    ESP_ERROR_CHECK(i2s_channel_init_std(i2s_tx_chan, &std_cfg));
+    ESP_ERROR_CHECK(i2s_channel_init_std_mode(i2s_tx_chan, &std_cfg));
     ESP_ERROR_CHECK(i2s_channel_enable(i2s_tx_chan));
 }
 
